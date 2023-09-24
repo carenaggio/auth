@@ -71,6 +71,10 @@ func Authenticate(writer http.ResponseWriter, request *http.Request, loginInfo L
 
 }
 
+func HealthCheck(writer http.ResponseWriter, request *http.Request) {
+	writer.Write([]byte("OK"))
+}
+
 func main() {
 	jwtKeyStr, found := os.LookupEnv("JWT_KEY")
 	if !found {
@@ -79,7 +83,10 @@ func main() {
 	}
 	jwtKey = []byte(jwtKeyStr)
 
+	http.HandleFunc("/health-check", HealthCheck)
+
 	if google_enabled {
+		log.Println("Enabling google endpoints.")
 		http.HandleFunc("/login/google", GoogleLogin)
 		http.HandleFunc("/login/google/callback", GoogleLoginCallback)
 	}

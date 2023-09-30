@@ -22,8 +22,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
-	"time"
 
+	"github.com/gin-gonic/gin"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
@@ -76,53 +76,48 @@ func GoogleLoadConfig() (bool, GoogleConfig) {
 	return true, payload
 }
 
-func GoogleLogin(writer http.ResponseWriter, request *http.Request) {
+func httpLoginGoogle(c *gin.Context) {
 	state_bytes := make([]byte, 64)
 	rand.Read(state_bytes)
 	state := base64.URLEncoding.EncodeToString(state_bytes)
-	state_cookie := http.Cookie{Name: "oauth_state", Value: state, Expires: time.Now().Add(10 * time.Minute)}
-	http.SetCookie(writer, &state_cookie)
-
-	return_url_cookie := http.Cookie{Name: "oauth_return_url", Value: request.URL.Query().Get("return_to"), Expires: time.Now().Add(10 * time.Minute)}
-	http.SetCookie(writer, &return_url_cookie)
-
+	c.SetCookie("oauth_state", state, 600, "/", c.Request.URL.Host, true, true)
+	c.SetCookie("return_to", c.Request.URL.Query().Get("return_to"), 600, "/", c.Request.URL.Host, true, true)
 	url := google_oauth_config.AuthCodeURL(state, oauth2.AccessTypeOffline)
-	http.Redirect(writer, request, url, http.StatusFound)
+	c.Redirect(http.StatusFound, url)
 }
 
-func GoogleLoginCallback(writer http.ResponseWriter, request *http.Request) {
-	state_cookie, _ := request.Cookie("oauth_state")
-
-	if request.FormValue("state") != state_cookie.Value {
-		http.Redirect(writer, request, "/", http.StatusTemporaryRedirect)
+func httpLoginGoogleCallback(c *gin.Context) {
+	state_cookie, _ := c.Cookie("oauth_state")
+	if c.Request.FormValue("state") != state_cookie {
+		c.Redirect(http.StatusTemporaryRedirect, "/")
 		return
 	}
 
-	code := request.URL.Query().Get("code")
-	token, err := google_oauth_config.Exchange(request.Context(), code)
+	code := c.Request.URL.Query().Get("code")
+	token, err := google_oauth_config.Exchange(c.Request.Context(), code)
 	if err != nil {
-		http.Error(writer, "Failed to exchange token", http.StatusInternalServerError)
+		c.Error(err)
+		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
 
-	// Use the 'token' to make API requests on behalf of the user.
-	client := google_oauth_config.Client(request.Context(), token)
+	client := google_oauth_config.Client(c.Request.Context(), token)
 
-	// Get the user's profile information.
 	resp, err := client.Get("https://www.googleapis.com/oauth2/v3/userinfo")
 	if err != nil {
-		http.Error(writer, "Failed to fetch user profile", http.StatusInternalServerError)
+		c.Error(err)
+		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
 	defer resp.Body.Close()
-	// Parse the JSON response to get user information.
+
 	var userInfo struct {
 		Email string `json:"email"`
-		// Add other fields you need from the user's profile here
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&userInfo); err != nil {
-		http.Error(writer, "Failed to parse user profile", http.StatusInternalServerError)
+		c.Error(err)
+		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
 
@@ -130,5 +125,5 @@ func GoogleLoginCallback(writer http.ResponseWriter, request *http.Request) {
 		Username: userInfo.Email,
 		Type:     "google",
 	}
-	Authenticate(writer, request, loginInfo)
+	Authenticate(c, loginInfo)
 }

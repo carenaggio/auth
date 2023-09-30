@@ -22,10 +22,11 @@ import (
 	"os"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 )
 
-var sessionDuration = 10 * time.Minute
+var sessionDuration = 600
 var jwtKey = []byte{}
 
 type LoginInfo struct {
@@ -39,8 +40,8 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-func Authenticate(writer http.ResponseWriter, request *http.Request, loginInfo LoginInfo) {
-	expirationTime := time.Now().Add(sessionDuration)
+func Authenticate(c *gin.Context, loginInfo LoginInfo) {
+	expirationTime := time.Now().Add(time.Duration(sessionDuration))
 
 	claims := Claims{
 		Username:           loginInfo.Username,
@@ -55,24 +56,27 @@ func Authenticate(writer http.ResponseWriter, request *http.Request, loginInfo L
 
 	tokenString, err := token.SignedString(jwtKey)
 	if err != nil {
-		writer.WriteHeader(http.StatusInternalServerError)
+		c.Error(err)
+		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
 
-	auth_cookie := http.Cookie{Name: "carenaggio_auth_token", Value: tokenString, Expires: expirationTime, Path: "/"}
-	http.SetCookie(writer, &auth_cookie)
+	c.SetCookie("carenaggio_auth_token", tokenString, sessionDuration, "/", c.Request.URL.Host, true, true)
 
-	return_to_cookie, _ := request.Cookie("oauth_return_url")
-	if return_to_cookie.Value == "" {
-		http.Redirect(writer, request, "/", http.StatusFound)
+	return_to_cookie, err := c.Cookie("return_to")
+	if err != nil {
+		return_to_cookie = ""
+	}
+	if return_to_cookie == "" {
+		c.Redirect(http.StatusFound, "/")
 	} else {
-		http.Redirect(writer, request, return_to_cookie.Value, http.StatusFound)
+		c.Redirect(http.StatusFound, return_to_cookie)
 	}
 
 }
 
-func HealthCheck(writer http.ResponseWriter, request *http.Request) {
-	writer.Write([]byte("OK"))
+func httpHealthCheck(c *gin.Context) {
+	c.Writer.Write([]byte("OK"))
 }
 
 func main() {
@@ -83,17 +87,14 @@ func main() {
 	}
 	jwtKey = []byte(jwtKeyStr)
 
-	http.HandleFunc("/health-check", HealthCheck)
+	r := gin.Default()
+	r.GET("/health-check", httpHealthCheck)
 
 	if google_enabled {
 		log.Println("Enabling google endpoints.")
-		http.HandleFunc("/login/google", GoogleLogin)
-		http.HandleFunc("/login/google/callback", GoogleLoginCallback)
+		r.GET("/login/google", httpLoginGoogle)
+		r.GET("/login/google/callback", httpLoginGoogleCallback)
 	}
 
-	err := http.ListenAndServe(":8080", nil)
-	if err != nil {
-		log.Println("There was an error listening on port :8080", err)
-	}
-
+	r.Run()
 }

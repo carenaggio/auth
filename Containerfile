@@ -8,5 +8,4 @@ RUN CGO_ENABLED=0 go build -tags netgo -ldflags '-extldflags -static -s' -o /go/
 FROM gcr.io/distroless/static-debian12
 LABEL org.opencontainers.image.source https://github.com/carenaggio/auth
 COPY --from=build /go/bin/auth /
-VOLUME /auth-configs
 CMD ["/auth"]

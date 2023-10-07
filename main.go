@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -40,9 +41,8 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-func Authenticate(c *gin.Context, loginInfo LoginInfo) {
-	expirationTime := time.Now().Add(time.Duration(sessionDuration))
-
+func Authenticate(c *gin.Context, loginInfo LoginInfo, returnTo string) {
+	expirationTime := time.Now().Add(time.Duration(sessionDuration) * time.Second)
 	claims := Claims{
 		Username:           loginInfo.Username,
 		AuthenticationType: loginInfo.Type,
@@ -61,22 +61,50 @@ func Authenticate(c *gin.Context, loginInfo LoginInfo) {
 		return
 	}
 
-	c.SetCookie("carenaggio_auth_token", tokenString, sessionDuration, "/", c.Request.URL.Host, true, true)
-
-	return_to_cookie, err := c.Cookie("return_to")
-	if err != nil {
-		return_to_cookie = ""
-	}
-	if return_to_cookie == "" {
+	c.SetCookie("carenaggio_auth_token", tokenString, sessionDuration, "/", c.Request.URL.Host, false, true)
+	if returnTo == "" {
 		c.Redirect(http.StatusFound, "/")
 	} else {
-		c.Redirect(http.StatusFound, return_to_cookie)
+		c.Redirect(http.StatusFound, returnTo)
 	}
 
 }
 
 func httpHealthCheck(c *gin.Context) {
 	c.Writer.Write([]byte("OK"))
+}
+
+func httpLoginInfo(c *gin.Context) {
+	tknStr, err := c.Cookie("carenaggio_auth_token")
+	if err != nil {
+		c.Error(err)
+		if err == http.ErrNoCookie {
+			c.AbortWithStatus(http.StatusUnauthorized)
+			return
+		}
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	claims := &Claims{}
+	tkn, err := jwt.ParseWithClaims(tknStr, claims, func(token *jwt.Token) (interface{}, error) {
+		return jwtKey, nil
+	})
+	if err != nil {
+		c.Error(err)
+		if err == jwt.ErrSignatureInvalid {
+			c.AbortWithStatus(http.StatusUnauthorized)
+			return
+		}
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+	if !tkn.Valid {
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+
+	c.Writer.Write([]byte(fmt.Sprintf("Welcome %s! %s", claims.Username, claims)))
 }
 
 func main() {
@@ -89,11 +117,18 @@ func main() {
 
 	r := gin.Default()
 	r.GET("/health-check", httpHealthCheck)
+	r.GET("/login/info", httpLoginInfo)
 
 	if google_enabled {
 		log.Println("Enabling google endpoints.")
 		r.GET("/login/google", httpLoginGoogle)
 		r.GET("/login/google/callback", httpLoginGoogleCallback)
+	}
+
+	if hermes_enabled {
+		log.Println("Enabling hermes endpoints.")
+		r.GET("/login/hermes/public_key", httpLoginHermesPublicKey)
+		r.POST("/login/hermes/login", httpLoginHermesLogin)
 	}
 
 	r.Run()

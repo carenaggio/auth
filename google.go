@@ -80,8 +80,8 @@ func httpLoginGoogle(c *gin.Context) {
 	state_bytes := make([]byte, 64)
 	rand.Read(state_bytes)
 	state := base64.URLEncoding.EncodeToString(state_bytes)
-	c.SetCookie("oauth_state", state, 600, "/", c.Request.URL.Host, true, true)
-	c.SetCookie("return_to", c.Request.URL.Query().Get("return_to"), 600, "/", c.Request.URL.Host, true, true)
+	c.SetCookie("oauth_state", state, 600, "/", c.Request.URL.Host, false, true)
+	c.SetCookie("return_to", c.Request.URL.Query().Get("return_to"), 600, "/", c.Request.URL.Host, false, true)
 	url := google_oauth_config.AuthCodeURL(state, oauth2.AccessTypeOffline)
 	c.Redirect(http.StatusFound, url)
 }
@@ -125,5 +125,11 @@ func httpLoginGoogleCallback(c *gin.Context) {
 		Username: userInfo.Email,
 		Type:     "google",
 	}
-	Authenticate(c, loginInfo)
+
+	returnTo, err := c.Cookie("return_to")
+	if err != nil {
+		returnTo = ""
+	}
+
+	Authenticate(c, loginInfo, returnTo)
 }

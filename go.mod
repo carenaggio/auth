@@ -3,6 +3,7 @@ module github.com/carenaggio/auth
 go 1.21.0
 
 require (
+	github.com/carenaggio/libs v0.0.0-20230929222757-07b42bee9eb8
 	github.com/gin-gonic/gin v1.9.1
 	github.com/golang-jwt/jwt/v5 v5.0.0
 	golang.org/x/oauth2 v0.11.0

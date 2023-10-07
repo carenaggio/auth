@@ -11,7 +11,7 @@ run: ${BINARY_NAME}
 image:
 	podman build -t ghcr.io/carenaggio/auth .
 
-image-push: container
+image-push: image
 	podman push ghcr.io/carenaggio/auth
 
 clean:

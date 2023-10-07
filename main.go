@@ -107,14 +107,7 @@ func httpLoginInfo(c *gin.Context) {
 	c.Writer.Write([]byte(fmt.Sprintf("Welcome %s! %s", claims.Username, claims)))
 }
 
-func main() {
-	jwtKeyStr, found := os.LookupEnv("JWT_KEY")
-	if !found {
-		log.Println("The JWT_KEY enviornment variable is required to be set")
-		return
-	}
-	jwtKey = []byte(jwtKeyStr)
-
+func setupRouter() *gin.Engine {
 	r := gin.Default()
 	r.GET("/health-check", httpHealthCheck)
 	r.GET("/login/info", httpLoginInfo)
@@ -131,5 +124,16 @@ func main() {
 		r.POST("/login/hermes/login", httpLoginHermesLogin)
 	}
 
+	return r
+}
+func main() {
+	jwtKeyStr, found := os.LookupEnv("JWT_KEY")
+	if !found {
+		log.Println("The JWT_KEY enviornment variable is required to be set")
+		return
+	}
+	jwtKey = []byte(jwtKeyStr)
+
+	r := setupRouter()
 	r.Run()
 }
